@@ -34,7 +34,7 @@ def main():
     load_config(config, args.config)   
    
     base_dir = os.path.expanduser(config.get('config', 'basedir')) 
-    class_txt = os.path.join(config.get('cache', 'name'))
+    class_txt = os.path.join(base_dir, config.get('cache', 'name'))
 
     # Make directory where tfrecord files saved
     cache_dir = os.path.join(base_dir, config.get('cache', 'cachedir'))

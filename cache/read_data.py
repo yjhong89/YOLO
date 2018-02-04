@@ -31,7 +31,7 @@ def xml_parsing(xml_path, class_index):
                 xmax = float(bndbox.xmax.string) - 1
                 ymin = float(bndbox.ymin.string) - 1
                 ymax = float(bndbox.ymax.string) - 1
-                object_coord.append((xmin, xmax, ymin, ymax))
+                object_coord.append((xmin, ymin, xmax, ymax))
             else:
                 raise IndexError('Name does not exist')
     size_info = parsed.find('size')
@@ -89,6 +89,3 @@ def voc(writer, class_index, data_type, row, basedir, verify=False):
 
     return True
         
-    
-#if __name__ == '__main__':
-    

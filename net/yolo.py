@@ -1,6 +1,5 @@
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
-import inspect
 
 def leaky_relu(x, alpha=0.1):
     with tf.name_scope('leaky_relu') as scope:
@@ -9,7 +8,7 @@ def leaky_relu(x, alpha=0.1):
 
 # Fast YOLO, 9 layers
 # Net must be 4 dimension
-def yolo(net, is_training, classes=20, boxes_per_cell=2, name='yolo', channel=16, output_dim=4096):
+def yolo(net, is_training, classes=20, cell_width=7, cell_height=7, boxes_per_cell=2, name='yolo', channel=16, output_dim=4096):
     def batch_norm(net):
         net = slim.batch_norm(net, center=False, scale=True, epsilon=1e-5, is_training=is_training)
         # center is False
@@ -46,24 +45,21 @@ def yolo(net, is_training, classes=20, boxes_per_cell=2, name='yolo', channel=16
             # [batch size, 7, 7, 256]
             print(net.get_shape().as_list())
         # Flatten and Fully connected layer
-        _, grid_width, grid_height, _ = net.get_shape().as_list()
+        #_, grid_width, grid_height, _ = net.get_shape().as_list()
         net = slim.layers.flatten(net, scope='flatten')
         with slim.arg_scope([slim.layers.fully_connected], activation_fn=leaky_relu, normalizer_fn=batch_norm):
             layer_index = 0
             net = slim.layers.fully_connected(net, channel*16, scope='fc%d' %(layer_index))
-            print(net.get_shape().as_list())
             layer_index += 1
             net = slim.layers.fully_connected(net, output_dim, scope='fc%d' %(layer_index))
-            print(net.get_shape().as_list())
-        # Final output: [batch size, 7,7, grid_width*grid_height*(boxes_per_cell*5+classes]]
-        final_outputdim = grid_width * grid_height * (boxes_per_cell * 5 + classes)
+        # Final output: [batch size, 7,7, cell_width*cell_height*(boxes_per_cell*5+classes]]
+        final_outputdim = cell_width * cell_height * (boxes_per_cell * 5 + classes)
         net = slim.layers.fully_connected(net, final_outputdim, scope='output')      
 
-        return net, name
+        return net
 
 
 if __name__ == '__main__':
     net = tf.get_variable('test', [10, 448,448,3])
-    a,b = yolo(net, False)
-    print(b)
-    print(tf.global_variables())
+    a = yolo(net, False)
+    print(a.get_shape())
