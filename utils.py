@@ -101,9 +101,9 @@ def label_processing(object_class, num_class, object_coord, cell_width, cell_hei
     object_appear[object_cell_index] = 1
 
     # Each cell prdicts conditional class probabilities pr(class|object), conditioned on the cell containing an object
-    class_prob = np.zeros([num_cell, 1, num_class], dtype=np.float32)
+    class_prob = np.zeros([num_cell, num_class], dtype=np.float32)
     # object_class.shape = [num_of_object,]
-    class_prob[object_cell_index, 0, object_class] = 1
+    class_prob[object_cell_index, object_class] = 1
 
     # To calculate Intersection Over Union(IOU), we need area information.
     # Note that area is normally larger than one cell and each cell are normalized to [0,1], area is over the one grid-> respect to (7,7)
