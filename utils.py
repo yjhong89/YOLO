@@ -1,16 +1,17 @@
 import tensorflow as tf
 import os
+import numpy as np
 
 # In tfrecord, 
 # Image name(bytes), Image size(int), Object info(Object class, Object coord)
  
-def read_tfrecord(tfrecord_path, config):
+def read_tfrecord(tfrecord_path, config, num_class):
     # tf.name_scope is for operators
-    with tf.name_scope(tfrecord_path.split('.')[0]):
+    with tf.name_scope('read_tfrecord'):
         # Read tfrecord file
         # Create a queue to hold filenames using tf.train.string_input_produce,
             # hold filenames in a FIFO queue(list)
-        file_queue = tf.train.string_input_producer([tfrecord_path], shuffle=True)
+        file_queue = tf.train.string_input_producer(tfrecord_path, shuffle=True)
         # Define a reader, reader returns the next record using reader.read(filename_queue)
         reader = tf.TFRecordReader()
         _, serialized_example = reader.read(file_queue)
@@ -41,10 +42,36 @@ def read_tfrecord(tfrecord_path, config):
     resized_image, resized_object_coord = resize_image(image, image_shape, object_coord, config.getint(model_name, 'width'), config.getint(model_name, 'height'))
     image = tf.clip_by_value(resized_image, 0, 255)
 
-    down_ratio = int(config.getint(model_name, 'width') / config.getint(model_name, 'cell_width'))
-    processed_label = label_processing(object_class, num_class, resized_object_coord, config.getint(model_name, 'cell_width'), config.getint(model_name, 'cell_height'), down_ratio)
+    cell_width = config.getint(model_name, 'cell_width')
+    cell_height = config.getint(model_name, 'cell_height')
+    num_cells = cell_width * cell_height
 
-    return image, processed_label
+    down_ratio = int(config.getint(model_name, 'width') / config.getint(model_name, 'cell_width'))
+    tf.logging.info('Down sampling ratio %d' % down_ratio)
+    ''' 
+        labels from tfrecord file are Tensor object.
+        But we want to process them as numpy arrays (Tensor object is not iterable) 
+        -> use tf.py_func
+    '''    
+    '''
+        tf.py_func(func, input, Tout): takes numpy array and returns numpy array as its output, wrap this function as anoperation in a tensorflow graph.
+            func : A python function, which takes numpy array havin gelement types that match Tensor object in 'inp'
+            inp : A list of Tensor object for 'func''s arguments
+            Tout : A list of tensorflow data type which indicates what 'func' return
+            return : A list of Tensor which func computes            
+    '''
+    object_appear, object_relative_xy, class_prob, regression_coord_label = tf.py_func(label_processing, [object_class, num_class, resized_object_coord, cell_width, cell_height, down_ratio], [tf.float32] * 4) 
+    # tf.py_func returns unknown shape-> need to reshape return values
+    with tf.name_scope('reshaping_label'):
+        object_appear = tf.reshape(object_appear, [num_cells, 1])
+        object_relative_xy = tf.reshape(object_relative_xy, [num_cells, 1, 4])
+        class_prob = tf.reshape(class_prob, [num_cells, num_class])
+        regression_coord_label = tf.reshape(regression_coord_label, [num_cells, 1, 4])
+    #processed_label = label_processing(object_class, num_class, resized_object_coord, config.getint(model_name, 'cell_width'), config.getint(model_name, 'cell_height'), down_ratio)
+    
+    labels = (object_appear, object_relative_xy, class_prob, regression_coord_label)
+
+    return image, labels
 
 def resize_image(image, image_shape, object_coord, config_width, config_height):
     # To do division
@@ -64,20 +91,24 @@ def resize_image(image, image_shape, object_coord, config_width, config_height):
 # (x,y) coordinates represent the center of the box relative to the bounds of the grid cell
     # (x,y) becomes the offset of a particular grid cell
 def label_processing(object_class, num_class, object_coord, cell_width, cell_height, ratio):
-    if len(object_class) != len(object_coord):
-        raise ValueError('Number of object is not same')
+
+    assert len(object_class) == len(object_coord)
+
+    # All arguments are Tensor type, need to calculate based on numpy array
 
     # Divde input image into s*s cell. If the center of an object fall into a cell, that cell is reponsible for detecting object
     num_cell = cell_width * cell_height
     # object_coord: [num_of_object, 4] -> [4, num_of_object] by transpose
         # Each has shape of [num_of_object,]
-    x_min, y_min, x_max, y_max = object_coord.T
+    x_min, y_min, x_max, y_max = object_coord.T 
     x_center = (x_min + x_max) / 2
     y_center = (y_min + y_max) / 2
     # (n,m) cell, (448, 448) -> (7,7), ratio: 64, each cell [0,1]
     object_cell_x = x_center / ratio
     object_cell_y = y_center / ratio
     # Calculate cell index, shape of [num_of_object,]
+        # Only size-1 arrays can be converted to python scalar, int()
+        # -> .astype(np.int)
     object_cell_index = (np.floor(object_cell_y) * cell_width + np.floor(object_cell_x)).astype(np.int)
     # offset between cell boundary and obejct center
     offset_x = object_cell_x - np.floor(object_cell_x)
@@ -85,6 +116,8 @@ def label_processing(object_class, num_class, object_coord, cell_width, cell_hei
     # width and height are predicted relative to the whole image
     object_width = ((x_max - x_min) / ratio) / cell_width
     object_height = ((y_max - y_min) /ratio) / cell_height
+
+    #print(object_cell_index)
 
     # [num_cell, 1, *]: middle '1' is for 'boxes_per_cell'
 
@@ -97,7 +130,7 @@ def label_processing(object_class, num_class, object_coord, cell_width, cell_hei
     regression_coord_label[object_cell_index,0, 3] = np.sqrt(object_height)
 
     # Object appear 
-    object_appear = np.zeros([num_cell, 1], dtype=np.int)
+    object_appear = np.zeros([num_cell, 1], dtype=np.float32)
     object_appear[object_cell_index] = 1
 
     # Each cell prdicts conditional class probabilities pr(class|object), conditioned on the cell containing an object

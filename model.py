@@ -1,20 +1,18 @@
 import tensorflow as tf
 import utils
 import importlib
+import numpy as np
 
 class yolo_model():
-    def __init__(self, config, args):
+    def __init__(self, config, args, num_class):
         self.config = config
         self.args = args
         # yolo is 'net/yolo.py'
         # yolo2 is 'net/yolo2.py'
         self.yolo_name = self.config.get('config', 'model')
-        yolo_module = importlib_import_module('net.'+yolo_name)
+        yolo_module = importlib.import_module('net.'+self.yolo_name)
 
-        class_txt = os.path.join(self.config.get('config', 'basedir'), self.config.get('cache', 'name'))
-        with open(class_txt, 'r') as f:
-            class_names = [line.strip() for line in f]
-        self.num_classes = len(class_names)   
+        self.num_classes = num_class   
         self.boxes_per_cell = self.config.getint(self.yolo_name, 'boxes_per_cell')
         self.channel = self.config.getint(self.yolo_name, 'channel')
         self.cell_width = self.config.getint(self.yolo_name, 'cell_width')
@@ -35,7 +33,7 @@ class yolo_model():
             # width and height regression is based on square root, so assume network outputs square root of width and height
             # Note that it should be positive
             w_h = tf.abs(x_y_w_h_conf[:,:,:,3:], name='w_h')
-            self.coord = tf.concat(self.x_y, w_h, -1, name='coordinate')
+            self.coord = tf.concat([self.x_y, w_h], axis=-1, name='coordinate')
             # Get width and height and to calculate area, componsate cell grid index
             area_w_h = tf.square(x_y_w_h_conf[:,:,:,3:]) * np.array([self.cell_width, self.cell_height])
             self.area_xy_min = self.x_y - area_w_h / 2
@@ -60,7 +58,6 @@ class yolo_model():
             overlapped_xy_min = tf.maximum(self.area_xy_min, object_relative_xy[:,:,:,:2])
             # xy_max for overlapped box
             overlapped_xy_max = tf.minimum(self.area_xy_max, object_relative_xy[:,:,:,2:])
-            assert overlapped_xy_max - overlapped_xy_min > 0
             overlapped_area = tf.reduce_prod(overlapped_xy_max - overlapped_xy_min, -1, name='overlapped_area')
             total_area = tf.maximum(self.predicted_area + target_area - overlapped_area, 1e-5, name='total_area')
             self.iou  = tf.truediv(overlapped_area, total_area, name='IOU')
@@ -78,20 +75,21 @@ class yolo_model():
                 # [batch_size, num_cell, bounding_box]
             self.only_highest_iou = highest_iou_index * self.iou
             # For no_obj
-            self.no_obj_iou = 1 - only_highest_iou
+            self.no_obj_iou = 1 - self.only_highest_iou
         
         # Objectives have 4 dimensions, we need mask dimension to be expanded 
         with tf.name_scope('regression_losses'):
-            coordinate_objective = self.config.getfloat(self.yolo_name, 'coord') * tf.reduce_sum(tf.expand_dims(self.only_highest_iou, -1) * tf.square(self.coord - regression_coord_label))
-            tf.summary.scalar(coordinate_objective, 'coordinate_objective')
-            confidence_obj = tf.reduce_sum(tf.expand_dims(self.only_highest_iou, -1) * tf.square(self.conf - self.iou))
-            confidence_noobj = self.config.getflaot(self.yolo_name, 'noobj') * tf.reduce_sum(tf.expand_dims(self.no_obj_iou, -1) * tf.square(self.conf - self.iou))
-            tf.summary.scalar(confidence_obj + confidence_noobj, 'confidence_objective')
-            probability_objective = tf.reduce_sum(object_appear * tf.square(class_prob - self.class_prob_pred))
-            tf.summary.scalar(probability_objective, 'probability_objective')
+            coordinate_objective = self.config.getfloat(self.yolo_name, 'coord') * tf.reduce_mean(tf.expand_dims(self.only_highest_iou, -1) * tf.square(self.coord - regression_coord_label), name='coordinate_regresssion')
+            #print(self.only_highest_iou.get_shape().as_list())
+            tf.summary.scalar('coordinate_objective', coordinate_objective)
+            confidence_obj = tf.reduce_mean(self.only_highest_iou * tf.square(self.conf - self.iou), name='confidence_obj_regression')
+            confidence_noobj = self.config.getfloat(self.yolo_name, 'noobj') * tf.reduce_mean(self.no_obj_iou * tf.square(self.conf - self.iou), name='confidence_noobj_regression')
+            tf.summary.scalar('confidence_objective', confidence_obj + confidence_noobj)
+            probability_objective = tf.reduce_mean(object_appear * tf.square(class_prob - self.class_prob_pred), name='probability_regression')
+            tf.summary.scalar('probability_objective', probability_objective)
 
             total_loss = coordinate_objective + confidence_obj + confidence_noobj + probability_objective
-            tf.summary.scalar(total_loss, 'total_losses')
+            tf.summary.scalar('total_loss_sum', total_loss)
             # If we use 'tf.losses', any loss is added to teh tf.GraphKeys.LOSSES collection,
             # We can call them easily with tf.losses.get_total_loss()
             tf.add_to_collection(tf.GraphKeys.LOSSES, total_loss)

@@ -40,7 +40,7 @@ def xml_parsing(xml_path, class_index):
     #print(image_name, size, object_index, object_coord)
     return image_name, size, object_index, object_coord
     
-
+# From pandas, row['key'] returns corresponding value
 def voc(writer, class_index, data_type, row, basedir, verify=False):
     # row['root']: indexing with header 'root'
     voc_path = os.path.join(basedir, row['root'])

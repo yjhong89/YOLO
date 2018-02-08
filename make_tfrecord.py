@@ -4,9 +4,11 @@ import pandas as pd
 import configparser
 import argparse
 import importlib
+import shutil
 
 
 def load_config(config, inis):
+    # ini must be element of list
     for i in inis:
         # expanduser: change '~' to absolute value
         # expandvars: return the argument with environment variables expanded
@@ -22,6 +24,7 @@ def main():
     parser.add_argument('-v', '--verify', action='store_true')
     parser.add_argument('-t', '--data_type', nargs='+', default=['train', 'val', 'test'])
     parser.add_argument('--log', default='INFO')
+    parser.add_argument('-d','--delete', action='store_true')
 
     args = parser.parse_args()
     if args.log is 'INFO':
@@ -38,6 +41,9 @@ def main():
 
     # Make directory where tfrecord files saved
     cache_dir = os.path.join(base_dir, config.get('cache', 'cachedir'))
+    if args.delete:
+        tf.logging.warn('Delete tfrecord files')
+        shutil.rmtree(cache_dir)
     # exist_ok=True: Does not raise an exception if the directory already exists
     os.makedirs(cache_dir, exist_ok=True)
 
@@ -51,6 +57,7 @@ def main():
     # os.path.splitext: abc.txt->['abc', 'txt']
     # pd.read_csv: read column value with index, voc.tsv-> root(header), row2,3 is information, row index is addes from 0
     datasets = (os.path.basename(os.path.splitext(data_path)[0]), pd.read_csv(data_path))
+    print(datasets)
 
     # bluese05.tistory.com/31
     # dynamic import with module's name
@@ -65,7 +72,8 @@ def main():
             tf.logging.info('Loading %s %s dataset' % (datasets[0], t))
             # getattr(): Access to imported module's attribute
             function = getattr(call_module, datasets[0])
-            
+    
+            # pd.read_csv.iterrows() returns (row_index, (key, value))        
             for i, row in datasets[1].iterrows():
                 function(writer, class_names_idx, t, row, base_dir, args.verify)
 
