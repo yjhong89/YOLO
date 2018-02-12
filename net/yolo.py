@@ -16,7 +16,7 @@ def yolo(net, is_training, classes=20, cell_width=7, cell_height=7, boxes_per_ce
         return net
     with tf.variable_scope(name):
         # max_pool2d: stride=2(default), padding=SAME: output size is the same when when stride=1
-        with slim.arg_scope([slim.layers.conv2d], kernel_size=[3, 3], padding='SAME', normalizer_fn=batch_norm, activation_fn=leaky_relu), slim.arg_scope([slim.layers.max_pool2d], kernel_size=[2,2], padding='SAME'):
+        with slim.arg_scope([slim.layers.conv2d], kernel_size=[3, 3], padding='SAME', weights_initializer=tf.truncated_normal_initializer(stddev=0.01), normalizer_fn=batch_norm, activation_fn=leaky_relu), slim.arg_scope([slim.layers.max_pool2d], kernel_size=[2,2], padding='SAME'):
             layer_index = 0
             net = slim.layers.conv2d(net, channel, scope='conv%d' % (layer_index))
             net = slim.layers.max_pool2d(net, scope='max_pool%d' % (layer_index)) 

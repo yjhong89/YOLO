@@ -2,6 +2,7 @@ import tensorflow as tf
 import argparse
 import configparser
 from train import train
+from detection import detect
 from make_tfrecord import load_config
 import os
 
@@ -14,8 +15,10 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--config', default=['config.ini'])
     parser.add_argument('-t', '--data_type', nargs='+', default=['train','val'])
-    parser.add_argument('--steps', type=int, default=100000000)
-    parser.add_argument('--batch_size', type=int, default=8)
+    parser.add_argument('-d', '--delete', action='store_true')
+    parser.add_argument('--train', type=str2bool, default='f')
+    parser.add_argument('--steps', type=int, default=50000)
+    parser.add_argument('--batch_size', type=int, default=64)
     parser.add_argument('--gradient_norm', type=float, default=5.0)
     parser.add_argument('--optimizer_name', type=str, default='adam')
     parser.add_argument('--learning_rate', type=float, default=1e-5)
@@ -31,8 +34,20 @@ def main():
     load_config(config, args.config)
 
     #print(config)
-    
-    train(config, args)
+
+    if args.train:
+        train(config, args)
+    else:
+        detect(config, args)
+
+def str2bool(v):
+    if v.lower() in ('t', 'true'):
+        return True
+    elif v.lower() in ('f', 'false'):
+        return False
+    else:
+        raise ValueError('Not supported type')
+
 
 if __name__ == "__main__":
     main()

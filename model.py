@@ -73,7 +73,7 @@ class yolo_model():
             highest_iou_index = tf.to_float(tf.equal(self.iou, highest_iou), name='highest_iou_index')
             # object_appear: [batch_size, num_cell, 1]
                 # [batch_size, num_cell, bounding_box]
-            self.only_highest_iou = highest_iou_index * self.iou
+            self.only_highest_iou = highest_iou_index * object_appear
             # For no_obj
             self.no_obj_iou = 1 - self.only_highest_iou
         

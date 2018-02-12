@@ -4,7 +4,7 @@ import utils
 import tensorflow.contrib.slim as slim
 from tensorflow.python.framework import ops
 from model import yolo_model
-
+import shutil
 
 # Learning rate will be adjusted
 def get_optimizer(config, name, learning_rate):
@@ -34,6 +34,9 @@ def train(config, args):
     base_dir = os.path.expanduser(config.get('config', 'basedir'))
     log_dir = os.path.join(base_dir, config.get('config', 'logdir'))
     cache_dir = os.path.join(base_dir, config.get('cache', 'cachedir'))
+
+    if args.delete:
+        shutil.rmtree(log_dir)
     
     class_txt = os.path.join(base_dir, config.get('cache', 'name'))
     with open(class_txt, 'r') as f:

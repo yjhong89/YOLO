@@ -2,9 +2,14 @@ import tensorflow as tf
 import os
 import numpy as np
 
+
+def image_per_standardization(image):
+    # tf.image.per_image_standardization
+    normalized_image = (image - np.mean(image)) / max(np.std(image), 1/np.sqrt(np.prod(image.shape[1:])))
+    return normalized_image
+
 # In tfrecord, 
 # Image name(bytes), Image size(int), Object info(Object class, Object coord)
- 
 def read_tfrecord(tfrecord_path, config, num_class):
     # tf.name_scope is for operators
     with tf.name_scope('read_tfrecord'):
@@ -117,7 +122,11 @@ def label_processing(object_class, num_class, object_coord, cell_width, cell_hei
     object_width = ((x_max - x_min) / ratio) / cell_width
     object_height = ((y_max - y_min) /ratio) / cell_height
 
-    #print(object_cell_index)
+    #print('Index', object_cell_index)
+    #print('width', object_width)
+    #print('height', object_height)
+    #print('x', offset_x) 
+    #print('y',offset_y)
 
     # [num_cell, 1, *]: middle '1' is for 'boxes_per_cell'
 
