@@ -34,9 +34,11 @@ def read_tfrecord(tfrecord_path, config, num_class):
             object_coord = tf.decode_raw(decoded_example['object_info'][1], tf.float32, name='object_coord')
             # Need to reshape-> shape is [None]
             object_coord = tf.reshape(object_coord, [-1,4])
+            # height, width. depth
             image_shape = tf.cast(decoded_example['image_size'], tf.int64, name='image_shape')
             # tf.read_file(filename): filename is a tensor of type string and outputs the contents of filename
             image_file = tf.read_file(decoded_example['image_path'])
+            # uint8, 
             image = tf.image.decode_jpeg(image_file, channels=3)
             image = tf.cast(image, tf.float32)
 
@@ -83,7 +85,7 @@ def resize_image(image, image_shape, object_coord, config_width, config_height):
     raw_image_height = tf.cast(image_shape[0], tf.float32)
     raw_image_width = tf.cast(image_shape[1], tf.float32)
     with tf.name_scope('resize'):
-        resized_image = tf.image.resize_images(image, [config_width, config_height])
+        resized_image = tf.image.resize_images(image, [config_height, config_width])
         # shape of [2,], multiply resize_factor as width to 'x', height to 'y'
         resize_factor = [config_width/raw_image_width, config_height/raw_image_height]
         # tf.tile([a,b,c],[2]): [a,b,c,a,b,c]

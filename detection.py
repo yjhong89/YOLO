@@ -24,7 +24,7 @@ class plot():
         self.real_plots = list()
         self.fig = plt.figure()
         # Get Current axes, creatinig one if needed
-        self.ax = self.fig.gca()        
+        self.ax = self.fig.add_subplot(111, aspect='equal')        
         # itertools.cycle: Repeatedely produce
         # plt.rcParams['axes.color_cycle'] returns list of 10 colors
         # plt.rcParams['axes.prop_cycle'] returns cycler('color', 10 kinds of colors)
@@ -67,7 +67,7 @@ class plot():
                 cell_y = cell_height_index + offset_y
                 # Note that width and height are normalized to whole image
                 w, h = w_sqrt*w_sqrt, h_sqrt*h_sqrt             
-                w_real, h_real = w * self.image_width, h* self.image_height
+                w_real, h_real = w * self.image_width, h * self.image_height
                 x_min, y_min = cell_x * self.image_width / self.yolo.cell_width - w_real / 2, cell_y * self.image_height / self.yolo.cell_height - h_real / 2
                 object_rectangle = patches.Rectangle((x_min, y_min), w_real, h_real, linewidth = 1, color=self.colors[most_prob_index])
                 self.real_plots.append(self.ax.add_patch(object_rectangle))
@@ -76,8 +76,8 @@ class plot():
                 self.real_plots.append(object_annotation)
                 print(self.class_name[most_prob_index])
                 print(cell_x * self.image_width / self.yolo.cell_width, cell_y * self.image_height / self.yolo.cell_height)
-        self.fig.canvas.draw()
-            
+           
+        return self.real_plots 
         
 
 
@@ -120,12 +120,12 @@ def detect(config, args):
 
         # Get data by running session
         _image = sess.run(sample_detect[0])
+        plt.imsave('check.png',np.squeeze(_image, axis=0))
         _labels = sess.run(sample_detect[1:])
-        #print(_image)
-        #print(_labels)
 
         # This way gets always same data
-        #_image, _labels, _image_normalized = sess.run([images, labels, images_normalized], options=run_options)
+        #_image, _labels, _image_normalized = sess.run([images, labels, images_normalized])
+        #plt.imsave('check.png', _image)
         
         # expand batch size dimension for real label
         feed_dict = dict([(label_placeholder, real_labels) for label_placeholder, real_labels in zip(detect_label, _labels)])
@@ -140,4 +140,4 @@ def detect(config, args):
         coord.join(threads)
         
         # Plot
-        _ = plot(class_names, sess, yolo, feed_dict, _image, _labels)
+        #_ = plot(class_names, sess, yolo, feed_dict, _image, _labels)
