@@ -140,4 +140,4 @@ def detect(config, args):
         coord.join(threads)
         
         # Plot
-        #_ = plot(class_names, sess, yolo, feed_dict, _image, _labels)
+        _ = plot(class_names, sess, yolo, feed_dict, _image, _labels)

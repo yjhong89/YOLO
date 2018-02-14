@@ -29,7 +29,7 @@ def read_tfrecord(tfrecord_path, config, num_class):
         # Convert the data from string back to the number
             # tf.decode_raw(bytes, out_type) takes a tensor of type string and convert it to 'out_type'
             # For labels-> tf.cast
-        with tf.name_scope('decoded'):
+        with tf.name_scope('decode'):
             object_class = tf.decode_raw(decoded_example['object_info'][0], tf.int64, name='object_class')
             object_coord = tf.decode_raw(decoded_example['object_info'][1], tf.float32, name='object_coord')
             # Need to reshape-> shape is [None]

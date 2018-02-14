@@ -67,12 +67,12 @@ def voc(writer, class_index, data_type, row, basedir, verify=False):
         object_index = np.asarray(object_index, dtype=np.int64)
         object_coord = np.asarray(object_coord, dtype=np.float32)
         image_path = os.path.join(voc_path, 'JPEGImages', image_name)
+        print(image_path)
 
         # Here, we create a tfrecord file
         
         # Convert data into proper data type of the feature using 'tf.train.Int64List', 'tf.train.BytesList', 'tf.train.FloatList': these function expects 'value' to be either a list or numpy array    
         # Create a feature using 'tf.train.Feature'
-        #print(image_path)
         features = {'image_path' : tf.train.Feature(bytes_list=tf.train.BytesList(value=[tf.compat.as_bytes(image_path)]))}
             # tf.compat.as_bytes(bytes or text): Convert input string to bytes
             # value=: constructino of array is necessary-> value=[...] to make array
