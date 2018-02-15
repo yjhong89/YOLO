@@ -145,6 +145,7 @@ def label_processing(object_class, num_class, object_coord, cell_width, cell_hei
     object_appear[object_cell_index] = 1
 
     # Each cell prdicts conditional class probabilities pr(class|object), conditioned on the cell containing an object
+    # Two bounding box share conditional probability of object
     class_prob = np.zeros([num_cell, num_class], dtype=np.float32)
     # object_class.shape = [num_of_object,]
     class_prob[object_cell_index, object_class] = 1

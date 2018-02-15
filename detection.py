@@ -80,6 +80,11 @@ class plot():
         return self.real_plots 
         
 
+    def plot_pred(self):
+        # self.yolo's attributes has batch size axis
+        x_center, y_center, w, h, iou, prob = self.sess.run([self.yolo.coord[0][:,:,0], self.yolo.coord[0][:,:,1], self.yolo.coord[0][:,:,2], self.yolo.coord[0]]:,:,3], self.yolo.iou[0], self.yolo.class_prob_pred[0]) 
+        
+
 
 def detect(config, args):
     base_dir = os.path.expanduser(config.get('config', 'basedir'))
@@ -111,6 +116,10 @@ def detect(config, args):
         yolo = yolo_model(config, args, num_class)
         # Do inference
         yolo(detect_image, is_training=False)
+
+        with tf.name_scope('objective'):
+            yolo.create_objective(*sample_detect[1:])
+    
         # Can partially restore variable with 'exclude'
         variables_to_restore = slim.get_variables_to_restore()
 

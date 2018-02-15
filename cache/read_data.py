@@ -12,6 +12,34 @@ def check_file_list(file_list):
     else:
         return True
 
+def verify_decode(imagepath, imagesize):
+    with tf.name_scope('verify') as scope:
+        graph = tf.get_default_graph()
+
+        #tf.logging.info('verify decode_jpeg')
+        image_path = tf.placeholder(tf.string)
+        image_file = tf.read_file(image_path)
+        image_decode = tf.image.decode_jpeg(image_file, channels=3)
+
+        sess = tf.Session()
+
+        # as_default() context need to explicitly close session via sess.close()
+        with sess.as_default():
+            try:
+                # tf.get_degault_session() returns default session for the current thread
+                #image = tf.get_default_session().run(image_decode, feed_dict={image_path: imagepath})
+                image = sess.run(image_decode, feed_dict={image_path:imagepath})
+                tf.logging.info('Decode ' + imagepath)
+            except:
+                tf.logging.error('Not decoded')
+                return False
+   
+        sess.close() 
+        # np.all: test whether all array elements along a given axis are True
+        return np.all(np.equal(image.shape, imagesize))
+
+
+
 def xml_parsing(xml_path, class_index):
     with open(xml_path, 'r') as f:
         # f.read() returns all file contents
@@ -67,7 +95,14 @@ def voc(writer, class_index, data_type, row, basedir, verify=False):
         object_index = np.asarray(object_index, dtype=np.int64)
         object_coord = np.asarray(object_coord, dtype=np.float32)
         image_path = os.path.join(voc_path, 'JPEGImages', image_name)
-        print(image_path)
+        #print(image_path)
+
+        # Verify
+        if verify:
+            # If image does not pass vereify, do not add to tfrecord
+            if not verify_decode(image_path, image_size):
+                tf.logging.error('Failed to decode ' + image_path)
+                continue
 
         # Here, we create a tfrecord file
         
