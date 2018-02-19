@@ -10,9 +10,9 @@ def leaky_relu(x, alpha=0.1):
 # Net must be 4 dimension
 def yolo(net, is_training, classes=20, cell_width=7, cell_height=7, boxes_per_cell=2, name='yolo', channel=16, output_dim=4096):
     def batch_norm(net):
-        net = slim.batch_norm(net, center=False, scale=True, epsilon=1e-5, is_training=is_training)
+        net = slim.batch_norm(net, scale=True, epsilon=1e-5, is_training=is_training)
         # center is False
-        net = tf.nn.bias_add(net, slim.variable('biases', shape=[net.get_shape().as_list()[-1]], initializer=tf.zeros_initializer()))
+        #net = tf.nn.bias_add(net, slim.variable('biases', shape=[net.get_shape().as_list()[-1]], initializer=tf.zeros_initializer()))
         return net
     with tf.variable_scope(name):
         # max_pool2d: stride=2(default), padding=SAME: output size is the same when when stride=1

@@ -32,7 +32,7 @@ def read_tfrecord(tfrecord_path, config, num_class):
         with tf.name_scope('decode'):
             object_class = tf.decode_raw(decoded_example['object_info'][0], tf.int64, name='object_class')
             object_coord = tf.decode_raw(decoded_example['object_info'][1], tf.float32, name='object_coord')
-            # Need to reshape-> shape is [None]
+            # Need to reshape-> shape is [None], [xmin, ymin, xmax, ymax]
             object_coord = tf.reshape(object_coord, [-1,4])
             # height, width. depth
             image_shape = tf.cast(decoded_example['image_size'], tf.int64, name='image_shape')
@@ -44,9 +44,21 @@ def read_tfrecord(tfrecord_path, config, num_class):
 
     model_name = config.get('config', 'model')
 
+    if config.getboolean('augmentation', 'crop'):
+        image, object_coord, image_shape = tf.cond(tf.random_uniform([], maxval=1.0) < config.getfloat('augmentation', 'probability'),
+            lambda: random_crop(image, image_shape, object_coord),
+            lambda: (image, object_coord, image_shape))
+        
     # Image_shape: height, width, depth (375, 500, 3)
         # We neet to resize image to (448,448,3)
     resized_image, resized_object_coord = resize_image(image, image_shape, object_coord, config.getint(model_name, 'width'), config.getint(model_name, 'height'))
+    
+    # Adjust the saturation of an RGB image by a random factor
+    if config.getboolean('augmentation', 'saturation'):
+        resized_image = tf.cond(tf.random_uniform([], maxval=1.0) < config.getfloat('augmentation', 'probability'),
+            lambda: tf.image.random_saturation(resized_image, lower=0.5, upper=1.5),
+            lambda: resized_image)
+    
     image = tf.clip_by_value(resized_image, 0, 255)
 
     cell_width = config.getint(model_name, 'cell_width')
@@ -92,6 +104,45 @@ def resize_image(image, image_shape, object_coord, config_width, config_height):
         resized_object_coord = object_coord * tf.tile(resize_factor, [2])
 
     return resized_image, resized_object_coord
+
+# For data augmentation
+    # object_coord: (xmin, ymin, xmax, ymax)
+    # image_shape: {height, width, depth)
+def random_crop(image, image_shape, object_coord):
+    with tf.name_scope('random_crop'):
+        # Get xymin, xymax
+        xy_min = tf.reduce_min(object_coord[:,:2], axis=0)
+        xy_max = tf.reduce_max(object_coord[:,2:], axis=0)
+        # image_shape[1::-1]: (width, height)
+        max_margin = image_shape[1::-1] - xy_max
+        shrink_ratio = tf.random_uniform([4], minval=0, maxval=1.0) * tf.concat([xy_min, max_margin], axis=0)
+
+        cropped_object_coord = object_coord - tf.tile(shrink_ratio[:2], [2])
+        cropped_width_height = image_shape[1::-1] - shrink_ratio[:2] - shrink_ratio[2:]
+
+        cropped_image = tf.image.crop_to_bounding_box(image, tf.cast(shrink_ratio[0], tf.int32), tf.cast(shrink_ratio[1], tf.int32), tf.cast(cropped_width_height[0], tf.int32), tf.cast(cropped_width_height[1], tf.int32))
+
+        return cropped_image, cropped_object_coord, cropped_width_height
+
+def rotate(image, object_coord, degree, image_center_x, image_center_y):
+    with tf.name_scope('rotate'):
+        rotate_image = tf.contrib.image.rotate(image, degree, interpolation='NEAREST')
+        # Make rotate matrix
+            # Use tf.dynamic_stitch(indices, value) to make matrix
+        rotate_mtx = tf.dynamic_stitch([[0],[1],[2],[3]], [tf.cos(degree), tf.sin(degree), -tf.sin(degree), tf.cos(degree)])
+        rotate_mtx = tf.reshape(rotate_mtx, [2,2])
+        image_center = np.reshape(np.array([image_center_x, image_center_y]), (2,1))
+        rotated_coord_xy_min = tf.matmul(rotate_mtx, tf.transpose(object_coord[:,:2], [1,0]) - image_center) + image_center
+        rotated_coord_xy_max = tf.matmul(rotate_mtx, tf.transpose(object_coord[:,2:], [1,0]) - image_center) + image_center
+        # Note that xymin and xymax has been changed
+        # Back to original shape
+        rotated_coord_xy_min = tf.transpose(rotated_coord_xy_min, [1,0])
+        rotated_coord_xy_max = tf.transpose(rotated_coord_xy_max, [1,0])
+        xy_min = tf.minimum(rotated_coord_xy_min, rotated_coord_xy_max)
+        xy_max = tf.maximum(rotated_coord_xy_min, rotated_coord_xy_max)
+        rotate_object_coord = tf.concat([xy_min, xy_max], axis=1)
+
+        return rotate_iamge, rotate_object_coord
     
 # Process object class and object coordination information
 # Normalize the bounding box width and height by the image width and height so that they fall between 0 and 1.
