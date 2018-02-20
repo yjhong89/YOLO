@@ -16,16 +16,20 @@ def read_tfrecord(tfrecord_path, config, num_class):
         # Read tfrecord file
         # Create a queue to hold filenames using tf.train.string_input_produce,
             # hold filenames in a FIFO queue(list)
-        file_queue = tf.train.string_input_producer(tfrecord_path, shuffle=True)
+        file_queue = tf.train.string_input_producer(tfrecord_path)
         # Define a reader, reader returns the next record using reader.read(filename_queue)
         reader = tf.TFRecordReader()
         _, serialized_example = reader.read(file_queue)
         # Define a decoder: tf.parse_single_example, it takes a serialized example and a dictionary which maps feature keys to FixedLenFeature and returns a dictionary which maps feature keys to tensor
             # []: the number of feature
+            # tf.string returns bytes object when session run
         features = {'image_path' : tf.FixedLenFeature([], tf.string)}
         features['image_size'] = tf.FixedLenFeature([3], tf.int64)
         features['object_info'] = tf.FixedLenFeature([2], tf.string)
         decoded_example = tf.parse_single_example(serialized_example, features=features) 
+       
+        # Type of string tensor 
+        image_path = decoded_example['image_path']
         # Convert the data from string back to the number
             # tf.decode_raw(bytes, out_type) takes a tensor of type string and convert it to 'out_type'
             # For labels-> tf.cast
@@ -37,12 +41,20 @@ def read_tfrecord(tfrecord_path, config, num_class):
             # height, width. depth
             image_shape = tf.cast(decoded_example['image_size'], tf.int64, name='image_shape')
             # tf.read_file(filename): filename is a tensor of type string and outputs the contents of filename
-            image_file = tf.read_file(decoded_example['image_path'])
-            # uint8, 
+            image_file = tf.read_file(image_path)
+            # tf.uint8 tensor from decoe_jpeg
             image = tf.image.decode_jpeg(image_file, channels=3)
-            image = tf.cast(image, tf.float32)
+            # plt.imshow() interprets (1.0,1.0,1.0) and larger values as white
+            image = tf.cast(image, tf.float32) 
 
     model_name = config.get('config', 'model')
+
+    cell_width = config.getint(model_name, 'cell_width')
+    cell_height = config.getint(model_name, 'cell_height')
+    num_cells = cell_width * cell_height
+
+    down_ratio = int(config.getint(model_name, 'width') / config.getint(model_name, 'cell_width'))
+    tf.logging.info('Down sampling ratio %d' % down_ratio)
 
     if config.getboolean('augmentation', 'crop'):
         image, object_coord, image_shape = tf.cond(tf.random_uniform([], maxval=1.0) < config.getfloat('augmentation', 'probability'),
@@ -51,35 +63,35 @@ def read_tfrecord(tfrecord_path, config, num_class):
         
     # Image_shape: height, width, depth (375, 500, 3)
         # We neet to resize image to (448,448,3)
-    resized_image, resized_object_coord = resize_image(image, image_shape, object_coord, config.getint(model_name, 'width'), config.getint(model_name, 'height'))
+    image, object_coord = resize_image(image, image_shape, object_coord, config.getint(model_name, 'width'), config.getint(model_name, 'height'))
+
+    image = tf.clip_by_value(image, 0, 255.0)
     
     # Adjust the saturation of an RGB image by a random factor
     if config.getboolean('augmentation', 'saturation'):
-        resized_image = tf.cond(tf.random_uniform([], maxval=1.0) < config.getfloat('augmentation', 'probability'),
-            lambda: tf.image.random_saturation(resized_image, lower=0.5, upper=1.5),
-            lambda: resized_image)
-    
-    image = tf.clip_by_value(resized_image, 0, 255)
+        image = tf.cond(tf.random_uniform([], maxval=1.0) < config.getfloat('augmentation', 'probability'),
+            lambda: tf.image.random_saturation(image, lower=0.5, upper=1.5),
+            lambda: image)
 
-    cell_width = config.getint(model_name, 'cell_width')
-    cell_height = config.getint(model_name, 'cell_height')
-    num_cells = cell_width * cell_height
+    if config.getboolean('augmentation', 'rotate'):
+        random_degrees = config.get('augmentation', 'degree').split(',')
+        degree = int(np.random.choice(random_degrees))
+        image, object_coord = tf.cond(tf.random_uniform([], maxval=1.0) < config.getfloat('augmentation', 'probability'), 
+            lambda: rotate(image, object_coord, tf.cast(degree, tf.float32), config.getint(model_name, 'width')/2, config.getint(model_name, 'height')/2),
+            lambda: (image, object_coord))
 
-    down_ratio = int(config.getint(model_name, 'width') / config.getint(model_name, 'cell_width'))
-    tf.logging.info('Down sampling ratio %d' % down_ratio)
     ''' 
         labels from tfrecord file are Tensor object.
         But we want to process them as numpy arrays (Tensor object is not iterable) 
         -> use tf.py_func
-    '''    
-    '''
+    
         tf.py_func(func, input, Tout): takes numpy array and returns numpy array as its output, wrap this function as anoperation in a tensorflow graph.
             func : A python function, which takes numpy array havin gelement types that match Tensor object in 'inp'
             inp : A list of Tensor object for 'func''s arguments
             Tout : A list of tensorflow data type which indicates what 'func' return
             return : A list of Tensor which func computes            
     '''
-    object_appear, object_relative_xy, class_prob, regression_coord_label = tf.py_func(label_processing, [object_class, num_class, resized_object_coord, cell_width, cell_height, down_ratio], [tf.float32] * 4) 
+    object_appear, object_relative_xy, class_prob, regression_coord_label = tf.py_func(label_processing, [object_class, num_class, object_coord, cell_width, cell_height, down_ratio], [tf.float32] * 4) 
     # tf.py_func returns unknown shape-> need to reshape return values
     with tf.name_scope('reshaping_label'):
         object_appear = tf.reshape(object_appear, [num_cells, 1])
@@ -90,14 +102,15 @@ def read_tfrecord(tfrecord_path, config, num_class):
     
     labels = (object_appear, object_relative_xy, class_prob, regression_coord_label)
 
-    return image, labels
+    return image, labels, image_path
 
 def resize_image(image, image_shape, object_coord, config_width, config_height):
     # To do division
     raw_image_height = tf.cast(image_shape[0], tf.float32)
     raw_image_width = tf.cast(image_shape[1], tf.float32)
     with tf.name_scope('resize'):
-        resized_image = tf.image.resize_images(image, [config_height, config_width])
+        # bilinear, bicubic, area will change image data type from uint8 to float32
+        resized_image = tf.image.resize_images(image, [config_height, config_width], method=tf.image.ResizeMethod.BILINEAR)
         # shape of [2,], multiply resize_factor as width to 'x', height to 'y'
         resize_factor = [config_width/raw_image_width, config_height/raw_image_height]
         # tf.tile([a,b,c],[2]): [a,b,c,a,b,c]
@@ -107,31 +120,39 @@ def resize_image(image, image_shape, object_coord, config_width, config_height):
 
 # For data augmentation
     # object_coord: (xmin, ymin, xmax, ymax)
-    # image_shape: {height, width, depth)
+    # Need to care image_shape: {height, width, depth)
+    # Note that image coordinate's origin starts at top-left corner
 def random_crop(image, image_shape, object_coord):
+    # image_shape[1::-1]: (width, height)
+    # Need data type conversion to float32
+    width_height = tf.cast(image_shape[1::-1], tf.float32)
     with tf.name_scope('random_crop'):
         # Get xymin, xymax
         xy_min = tf.reduce_min(object_coord[:,:2], axis=0)
         xy_max = tf.reduce_max(object_coord[:,2:], axis=0)
-        # image_shape[1::-1]: (width, height)
-        max_margin = image_shape[1::-1] - xy_max
-        shrink_ratio = tf.random_uniform([4], minval=0, maxval=1.0) * tf.concat([xy_min, max_margin], axis=0)
+        max_margin = width_height - xy_max
+        shrink_offset = tf.random_uniform([4], minval=0, maxval=1.0) * tf.concat([xy_min, max_margin], axis=0)
 
-        cropped_object_coord = object_coord - tf.tile(shrink_ratio[:2], [2])
-        cropped_width_height = image_shape[1::-1] - shrink_ratio[:2] - shrink_ratio[2:]
+        cropped_object_coord = object_coord - tf.tile(shrink_offset[:2], [2])
+        cropped_width_height = width_height - shrink_offset[:2] - shrink_offset[2:]
+        
+        # offset_height, offset_width, target_height, target_width
+            # offset is top-left corner
+        cropped_image = tf.image.crop_to_bounding_box(image, tf.cast(shrink_offset[1], tf.int32), tf.cast(shrink_offset[0], tf.int32), tf.cast(cropped_width_height[1], tf.int32), tf.cast(cropped_width_height[0], tf.int32))
 
-        cropped_image = tf.image.crop_to_bounding_box(image, tf.cast(shrink_ratio[0], tf.int32), tf.cast(shrink_ratio[1], tf.int32), tf.cast(cropped_width_height[0], tf.int32), tf.cast(cropped_width_height[1], tf.int32))
+    return cropped_image, cropped_object_coord, tf.cast(cropped_width_height[1::-1], tf.int64)
 
-        return cropped_image, cropped_object_coord, cropped_width_height
 
+# Note that image coordinate's origin starts at top-left corner
 def rotate(image, object_coord, degree, image_center_x, image_center_y):
     with tf.name_scope('rotate'):
         rotate_image = tf.contrib.image.rotate(image, degree, interpolation='NEAREST')
         # Make rotate matrix
             # Use tf.dynamic_stitch(indices, value) to make matrix
-        rotate_mtx = tf.dynamic_stitch([[0],[1],[2],[3]], [tf.cos(degree), tf.sin(degree), -tf.sin(degree), tf.cos(degree)])
+        rotate_mtx = tf.dynamic_stitch([0,1,2,3], [tf.cos(degree), tf.sin(degree), -tf.sin(degree), tf.cos(degree)])
         rotate_mtx = tf.reshape(rotate_mtx, [2,2])
         image_center = np.reshape(np.array([image_center_x, image_center_y]), (2,1))
+        print(image_center)
         rotated_coord_xy_min = tf.matmul(rotate_mtx, tf.transpose(object_coord[:,:2], [1,0]) - image_center) + image_center
         rotated_coord_xy_max = tf.matmul(rotate_mtx, tf.transpose(object_coord[:,2:], [1,0]) - image_center) + image_center
         # Note that xymin and xymax has been changed
@@ -141,15 +162,18 @@ def rotate(image, object_coord, degree, image_center_x, image_center_y):
         xy_min = tf.minimum(rotated_coord_xy_min, rotated_coord_xy_max)
         xy_max = tf.maximum(rotated_coord_xy_min, rotated_coord_xy_max)
         rotate_object_coord = tf.concat([xy_min, xy_max], axis=1)
+        print(rotate_object_coord)
 
-        return rotate_iamge, rotate_object_coord
+    return rotate_image, rotate_object_coord
     
+
 # Process object class and object coordination information
 # Normalize the bounding box width and height by the image width and height so that they fall between 0 and 1.
 # (x,y) coordinates represent the center of the box relative to the bounds of the grid cell
     # (x,y) becomes the offset of a particular grid cell
 def label_processing(object_class, num_class, object_coord, cell_width, cell_height, ratio):
 
+    print('Number of object', len(object_class))
     assert len(object_class) == len(object_coord)
 
     # All arguments are Tensor type, need to calculate based on numpy array
@@ -161,6 +185,7 @@ def label_processing(object_class, num_class, object_coord, cell_width, cell_hei
     x_min, y_min, x_max, y_max = object_coord.T 
     x_center = (x_min + x_max) / 2
     y_center = (y_min + y_max) / 2
+    print('center', x_center, y_center)
     # (n,m) cell, (448, 448) -> (7,7), ratio: 64, each cell [0,1]
     object_cell_x = x_center / ratio
     object_cell_y = y_center / ratio

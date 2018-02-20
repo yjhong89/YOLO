@@ -54,9 +54,9 @@ class yolo_model():
         with tf.name_scope('iou'):
             # xy_max - xy_min: w,h
             target_area = tf.reduce_prod(object_relative_xy[:,:,:,2:] - object_relative_xy[:,:,:,:2], -1, name='target_area')
-            # xy_min for overlapped box
+            # xy_min for overlapped box, element-wise
             overlapped_xy_min = tf.maximum(self.area_xy_min, object_relative_xy[:,:,:,:2])
-            # xy_max for overlapped box
+            # xy_max for overlapped box, element-wise
             overlapped_xy_max = tf.minimum(self.area_xy_max, object_relative_xy[:,:,:,2:])
             overlapped_area = tf.reduce_prod(overlapped_xy_max - overlapped_xy_min, -1, name='overlapped_area')
             total_area = tf.maximum(self.predicted_area + target_area - overlapped_area, 1e-5, name='total_area')

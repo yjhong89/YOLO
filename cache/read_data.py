@@ -3,6 +3,7 @@ import tensorflow as tf
 import numpy as np
 # Library parsing html file
 from bs4 import BeautifulSoup
+import matplotlib.pyplot as plt
 
 def check_file_list(file_list):
     checklist = list(filter(os.path.exists, file_list))
@@ -29,6 +30,7 @@ def verify_decode(imagepath, imagesize):
                 # tf.get_degault_session() returns default session for the current thread
                 #image = tf.get_default_session().run(image_decode, feed_dict={image_path: imagepath})
                 image = sess.run(image_decode, feed_dict={image_path:imagepath})
+                #plt.imsave('./test' + imagepath.split('/')[-1], image)
                 tf.logging.info('Decode ' + imagepath)
             except:
                 tf.logging.error('Not decoded')
@@ -99,7 +101,7 @@ def voc(writer, class_index, data_type, row, basedir, verify=False):
 
         # Verify
         if verify:
-            # If image does not pass vereify, do not add to tfrecord
+            # If image does not pass verify, do not add to tfrecord
             if not verify_decode(image_path, image_size):
                 tf.logging.error('Failed to decode ' + image_path)
                 continue
@@ -110,10 +112,11 @@ def voc(writer, class_index, data_type, row, basedir, verify=False):
         # Create a feature using 'tf.train.Feature'
         features = {'image_path' : tf.train.Feature(bytes_list=tf.train.BytesList(value=[tf.compat.as_bytes(image_path)]))}
             # tf.compat.as_bytes(bytes or text): Convert input string to bytes
-            # value=: constructino of array is necessary-> value=[...] to make array
+            # value= construction of array is necessary-> value=[...] to make array
         features['image_size'] = tf.train.Feature(int64_list=tf.train.Int64List(value=image_size))
-            # value=image_size: list ('[image_size]') is not allowed since image_size is already tuple, so remove the constriction of the array
+            # value=image_size: list ('[image_size]') is not allowed since image_size is already tuple, so remove the construction of the array
         features['object_info'] = tf.train.Feature(bytes_list=tf.train.BytesList(value=[object_index.tostring(), object_coord.tostring()]))
+        #print(features['image_path'])
             # numpy array.tostring(): Convert to bytes
         # Create an Example protocol buffer using 'tf.train.Example'
         example = tf.train.Example(features=tf.train.Features(feature=features))
