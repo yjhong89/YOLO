@@ -74,7 +74,7 @@ def main():
             function = getattr(call_module, datasets[0])
     
             # pd.read_csv.iterrows() returns (row_index, (key, value))        
-            for i, row in datasets[1].iterrows():
+            for _, row in datasets[1].iterrows():
                 function(writer, class_names_idx, t, row, base_dir, args.verify)
 
 
