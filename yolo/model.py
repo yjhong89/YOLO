@@ -1,3 +1,5 @@
+import sys
+sys.path.append('..')
 import tensorflow as tf
 import utils
 import importlib
@@ -10,7 +12,8 @@ class yolo_model():
         # yolo is 'net/yolo.py'
         # yolo2 is 'net/yolo2.py'
         self.yolo_name = self.config.get('config', 'model')
-        yolo_module = importlib.import_module(self.yolo_name + '.yolo')
+        yolo_module = importlib.import_module(self.yolo_name)
+        print(yolo_module.__name__)
 
         self.num_classes = num_class   
         self.boxes_per_cell = self.config.getint(self.yolo_name, 'boxes_per_cell')
@@ -93,4 +96,5 @@ class yolo_model():
             # If we use 'tf.losses', any loss is added to teh tf.GraphKeys.LOSSES collection,
             # We can call them easily with tf.losses.get_total_loss()
             tf.add_to_collection(tf.GraphKeys.LOSSES, total_loss)
+
 
