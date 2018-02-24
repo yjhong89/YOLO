@@ -2,7 +2,7 @@ import tensorflow as tf
 import argparse
 import configparser
 from train import train
-from detection import detect
+#from detection import detect
 from make_tfrecord import load_config
 import os
 
@@ -16,12 +16,11 @@ def main():
     parser.add_argument('-c', '--config', default=['config.ini'])
     parser.add_argument('-t', '--data_type', nargs='+', default=['train','val'])
     parser.add_argument('-d', '--delete', action='store_true')
-    parser.add_argument('--train', type=str2bool, default='f')
+    parser.add_argument('--train', type=str2bool, default='t')
     parser.add_argument('--steps', type=int, default=50000)
-    parser.add_argument('--batch_size', type=int, default=64)
+    parser.add_argument('--batch_size', type=int, default=32)
     parser.add_argument('--gradient_norm', type=float, default=5.0)
     parser.add_argument('--optimizer_name', type=str, default='adam')
-    parser.add_argument('--learning_rate', type=float, default=1e-5)
     parser.add_argument('--save_secs', type=int, default=1000)
     parser.add_argument('--summary_secs', type=int, default=100)
     parser.add_argument('--logging_level', default='INFO')
@@ -33,11 +32,11 @@ def main():
     config = configparser.ConfigParser()
     load_config(config, args.config)
 
-    #print(config)
-
     if args.train:
+        tf.logging.info('Training')
         train(config, args)
     else:
+        tf.logging.info('Object detecting')
         detect(config, args)
 
 def str2bool(v):

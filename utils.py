@@ -1,5 +1,6 @@
 import tensorflow as tf
 import os
+import math
 import numpy as np
 
 
@@ -10,7 +11,7 @@ def image_per_standardization(image):
 
 # In tfrecord, 
 # Image name(bytes), Image size(int), Object info(Object class, Object coord)
-def read_tfrecord(tfrecord_path, config, num_class):
+def read_tfrecord(tfrecord_path, config, num_class, cell_width, cell_height):
     # tf.name_scope is for operators
     with tf.name_scope('read_tfrecord'):
         # Read tfrecord file
@@ -49,11 +50,8 @@ def read_tfrecord(tfrecord_path, config, num_class):
 
     model_name = config.get('config', 'model')
 
-    cell_width = config.getint(model_name, 'cell_width')
-    cell_height = config.getint(model_name, 'cell_height')
     num_cells = cell_width * cell_height
-
-    down_ratio = int(config.getint(model_name, 'width') / config.getint(model_name, 'cell_width'))
+    down_ratio = config.getint(model_name, 'ratio')
     tf.logging.info('Down sampling ratio %d' % down_ratio)
 
     if config.getboolean('augmentation', 'crop'):
@@ -65,21 +63,9 @@ def read_tfrecord(tfrecord_path, config, num_class):
         # We neet to resize image to (448,448,3)
     image, object_coord = resize_image(image, image_shape, object_coord, config.getint(model_name, 'width'), config.getint(model_name, 'height'))
 
+    image, object_coord = data_augmentation(image, object_coord, config, model_name)
     image = tf.clip_by_value(image, 0, 255.0)
     
-    # Adjust the saturation of an RGB image by a random factor
-    if config.getboolean('augmentation', 'saturation'):
-        image = tf.cond(tf.random_uniform([], maxval=1.0) < config.getfloat('augmentation', 'probability'),
-            lambda: tf.image.random_saturation(image, lower=0.5, upper=1.5),
-            lambda: image)
-
-    if config.getboolean('augmentation', 'rotate'):
-        random_degrees = config.get('augmentation', 'degree').split(',')
-        degree = int(np.random.choice(random_degrees))
-        image, object_coord = tf.cond(tf.random_uniform([], maxval=1.0) < config.getfloat('augmentation', 'probability'), 
-            lambda: rotate(image, object_coord, tf.cast(degree, tf.float32), config.getint(model_name, 'width')/2, config.getint(model_name, 'height')/2),
-            lambda: (image, object_coord))
-
     ''' 
         labels from tfrecord file are Tensor object.
         But we want to process them as numpy arrays (Tensor object is not iterable) 
@@ -152,7 +138,7 @@ def rotate(image, object_coord, degree, image_center_x, image_center_y):
         rotate_mtx = tf.dynamic_stitch([0,1,2,3], [tf.cos(degree), tf.sin(degree), -tf.sin(degree), tf.cos(degree)])
         rotate_mtx = tf.reshape(rotate_mtx, [2,2])
         image_center = np.reshape(np.array([image_center_x, image_center_y]), (2,1))
-        print(image_center)
+        #print(image_center)
         rotated_coord_xy_min = tf.matmul(rotate_mtx, tf.transpose(object_coord[:,:2], [1,0]) - image_center) + image_center
         rotated_coord_xy_max = tf.matmul(rotate_mtx, tf.transpose(object_coord[:,2:], [1,0]) - image_center) + image_center
         # Note that xymin and xymax has been changed
@@ -162,9 +148,39 @@ def rotate(image, object_coord, degree, image_center_x, image_center_y):
         xy_min = tf.minimum(rotated_coord_xy_min, rotated_coord_xy_max)
         xy_max = tf.maximum(rotated_coord_xy_min, rotated_coord_xy_max)
         rotate_object_coord = tf.concat([xy_min, xy_max], axis=1)
-        print(rotate_object_coord)
 
     return rotate_image, rotate_object_coord
+   
+
+def data_augmentation(image, object_coord, config, model_name):
+
+    with tf.name_scope('augmentation'):
+        # Adjust the saturation of an RGB image by a random factor by up to factor 1.5
+        if config.getboolean('augmentation', 'saturation'):
+            image = tf.cond(tf.random_uniform([], maxval=1.0) < config.getfloat('augmentation', 'probability'),
+                lambda: tf.image.random_saturation(image, lower=0.5, upper=1.5),
+                lambda: image)
+    
+        if config.getboolean('augmentation', 'rotate'):
+            random_degrees = config.get('augmentation', 'degree').split(',')
+            # radian
+            degree = int(np.random.choice(random_degrees)) * math.pi / 180
+            image, object_coord = tf.cond(tf.random_uniform([], maxval=1.0) < config.getfloat('augmentation', 'probability'), 
+                lambda: rotate(image, object_coord, tf.cast(degree, tf.float32), config.getint(model_name, 'width')/2, config.getint(model_name, 'height')/2),
+                lambda: (image, object_coord))
+    
+        if config.getboolean('augmentation', 'hue'):
+            image = tf.cond(tf.random_uniform([], maxval=1.0) < config.getfloat('augmentation', 'probability'),
+                lambda: tf.image.random_hue(image, max_delta=0.032),
+                lambda: image)
+    
+        if config.getboolean('augmentation', 'contrast'):
+            image = tf.cond(tf.random_uniform([], maxval=1.0) < config.getfloat('augmentation', 'probability'),
+                lambda: tf.image.random_contrast(image, lower=0.5, upper=1.5),
+                lambda: image)
+
+    return image, object_coord
+             
     
 
 # Process object class and object coordination information
@@ -173,7 +189,7 @@ def rotate(image, object_coord, degree, image_center_x, image_center_y):
     # (x,y) becomes the offset of a particular grid cell
 def label_processing(object_class, num_class, object_coord, cell_width, cell_height, ratio):
 
-    print('Number of object', len(object_class))
+    #print('Number of object', len(object_class))
     assert len(object_class) == len(object_coord)
 
     # All arguments are Tensor type, need to calculate based on numpy array
@@ -185,7 +201,7 @@ def label_processing(object_class, num_class, object_coord, cell_width, cell_hei
     x_min, y_min, x_max, y_max = object_coord.T 
     x_center = (x_min + x_max) / 2
     y_center = (y_min + y_max) / 2
-    print('center', x_center, y_center)
+    #print('center', x_center, y_center)
     # (n,m) cell, (448, 448) -> (7,7), ratio: 64, each cell [0,1]
     object_cell_x = x_center / ratio
     object_cell_y = y_center / ratio

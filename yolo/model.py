@@ -12,14 +12,14 @@ class yolo_model():
         # yolo is 'net/yolo.py'
         # yolo2 is 'net/yolo2.py'
         self.yolo_name = self.config.get('config', 'model')
-        yolo_module = importlib.import_module(self.yolo_name)
+        yolo_module = importlib.import_module(self.yolo_name + '.' + self.yolo_name)
         print(yolo_module.__name__)
 
         self.num_classes = num_class   
         self.boxes_per_cell = self.config.getint(self.yolo_name, 'boxes_per_cell')
         self.channel = self.config.getint(self.yolo_name, 'channel')
-        self.cell_width = self.config.getint(self.yolo_name, 'cell_width')
-        self.cell_height = self.config.getint(self.yolo_name, 'cell_height')
+        self.cell_width = self.config.getint(self.yolo_name, 'width') // self.config.getint(self.yolo_name, 'ratio')
+        self.cell_height = self.config.getint(self.yolo_name, 'height') // self.config.getint(self.yolo_name, 'ratio')
        
         # Call yolo network function 
         self.yolo = getattr(yolo_module, self.yolo_name)
@@ -82,13 +82,13 @@ class yolo_model():
         
         # Objectives have 4 dimensions, we need mask dimension to be expanded 
         with tf.name_scope('regression_losses'):
-            coordinate_objective = self.config.getfloat(self.yolo_name, 'coord') * tf.reduce_mean(tf.expand_dims(self.only_highest_iou, -1) * tf.square(self.coord - regression_coord_label), name='coordinate_regresssion')
+            coordinate_objective = self.config.getfloat(self.yolo_name, 'coord') * tf.reduce_sum(tf.expand_dims(self.only_highest_iou, -1) * tf.square(self.coord - regression_coord_label), name='coordinate_regresssion')
             #print(self.only_highest_iou.get_shape().as_list())
             tf.summary.scalar('coordinate_objective', coordinate_objective)
-            confidence_obj = tf.reduce_mean(self.only_highest_iou * tf.square(self.conf - self.iou), name='confidence_obj_regression')
-            confidence_noobj = self.config.getfloat(self.yolo_name, 'noobj') * tf.reduce_mean(self.no_obj_iou * tf.square(self.conf - self.iou), name='confidence_noobj_regression')
+            confidence_obj = tf.reduce_sum(self.only_highest_iou * tf.square(self.conf - self.only_highest_iou), name='confidence_obj_regression')
+            confidence_noobj = self.config.getfloat(self.yolo_name, 'noobj') * tf.reduce_sum(self.no_obj_iou * tf.square(self.conf - self.only_highest_iou), name='confidence_noobj_regression')
             tf.summary.scalar('confidence_objective', confidence_obj + confidence_noobj)
-            probability_objective = tf.reduce_mean(object_appear * tf.square(class_prob - self.class_prob_pred), name='probability_regression')
+            probability_objective = tf.reduce_sum(object_appear * tf.square(class_prob - self.class_prob_pred), name='probability_regression')
             tf.summary.scalar('probability_objective', probability_objective)
 
             total_loss = coordinate_objective + confidence_obj + confidence_noobj + probability_objective

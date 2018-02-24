@@ -119,5 +119,6 @@ def yolo2(net, is_training, num_anchors, classes, channel=32, name='yolo2'):
 if __name__ == '__main__':
     net = tf.get_variable('test', [10, 416,416,3])
     a = yolo2(net, False, 5, 20)
-                
+    for a in tf.trainable_variables():
+        print(a.op.name)        
 
