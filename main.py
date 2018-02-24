@@ -2,9 +2,10 @@ import tensorflow as tf
 import argparse
 import configparser
 from train import train
-#from detection import detect
+from detection import detect
 from make_tfrecord import load_config
 import os
+import pandas as pd
 
 # Not int, must be string
 os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
@@ -16,7 +17,7 @@ def main():
     parser.add_argument('-c', '--config', default=['config.ini'])
     parser.add_argument('-t', '--data_type', nargs='+', default=['train','val'])
     parser.add_argument('-d', '--delete', action='store_true')
-    parser.add_argument('--train', type=str2bool, default='t')
+    parser.add_argument('--train', type=str2bool, default='f')
     parser.add_argument('--steps', type=int, default=50000)
     parser.add_argument('--batch_size', type=int, default=32)
     parser.add_argument('--gradient_norm', type=float, default=5.0)
@@ -32,12 +33,17 @@ def main():
     config = configparser.ConfigParser()
     load_config(config, args.config)
 
+    model_name = config.get('config', 'model')
+
+    base_dir = os.path.expanduser(config.get('config', 'basedir'))
+    anchor_info = pd.read_csv(os.path.join(base_dir, config.get('cache', 'anchor'))).values
+
     if args.train:
         tf.logging.info('Training')
-        train(config, args)
+        train(config, args, anchor_info, model_name)
     else:
         tf.logging.info('Object detecting')
-        detect(config, args)
+        detect(config, args, anchor_info, model_name)
 
 def str2bool(v):
     if v.lower() in ('t', 'true'):

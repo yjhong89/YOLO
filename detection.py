@@ -4,17 +4,21 @@ import configparser
 import utils
 import os
 import tensorflow.contrib.slim as slim
-from model import yolo_model
 import matplotlib.pyplot as plt
 plt.switch_backend('agg')
 import matplotlib.patches as patches
 # Make iterable object
 import itertools
+import importlib
 
 class plot():
-    def __init__(self, class_name, sess, inference_model, feed_dict, image, label):
+    def __init__(self, class_name, sess, inference_model, feed_dict, image, label, cell_width, cell_height):
         self.sess = sess
         self.yolo = inference_model
+        self.cell_width = cell_width
+        self.cell_height = cell_height
+#        self.image = image
+#        self.label = label
         # image, label include batch size axis
         self.image = np.squeeze(image, axis=0)
         self.label = label
@@ -41,13 +45,13 @@ class plot():
 
     def draw(self):
         # Set x-axis tick (448,448) divide to 7*7 grids
-        self.ax.set_xticks(np.arange(0, self.image_width, self.image_width / self.yolo.cell_width))
-        self.ax.set_yticks(np.arange(0, self.image_height, self.image_height / self.yolo.cell_height))
+        self.ax.set_xticks(np.arange(0, self.image_width, self.image_width / self.cell_width))
+        self.ax.set_yticks(np.arange(0, self.image_height, self.image_height / self.cell_height))
         # grid: 'which': major and minor tick grids
         self.ax.grid(which='both', axis='both')
 
     def plot_real(self):
-        self.ax.imshow(self.image)
+        self.ax.imshow(self.image / 255.0)
         # self.labels: real labels, (object_appear, object_relative_xy, class_prob, regression_coord_label)
             # [batch_size, num_cells, 1], [batch_size, num_cells, 1, 4], [batch_size, num_cells, num_class] [batch_size, num_cells, 1, 4]
         # Select object appear cell
@@ -55,10 +59,10 @@ class plot():
             if _object_appear != 0:
                 most_prob_index = np.argmax(_class_prob)
                 # Getting index
-                cell_height_index = cell_index // self.yolo.cell_width
-                cell_width_index = cell_index % self.yolo.cell_height
+                cell_height_index = cell_index // self.cell_width
+                cell_width_index = cell_index % self.cell_height
                 # Bottom and left coordinate
-                cell_rectangle = patches.Rectangle((cell_width_index * self.image_width / self.yolo.cell_width, cell_height_index * self.image_height / self.yolo.cell_height), self.image_width / self.yolo.cell_width, self.image_height / self.yolo.cell_height, linestyle='dashed', edgecolor=self.colors[most_prob_index])
+                cell_rectangle = patches.Rectangle((cell_width_index * self.image_width / self.cell_width, cell_height_index * self.image_height / self.cell_height), self.image_width / self.cell_width, self.image_height / self.cell_height, linestyle='dashed', edgecolor=self.colors[most_prob_index])
                 self.real_plots.append(self.ax.add_patch(cell_rectangle))
     
                 # All between [0,1]
@@ -68,28 +72,34 @@ class plot():
                 # Note that width and height are normalized to whole image
                 w, h = w_sqrt*w_sqrt, h_sqrt*h_sqrt             
                 w_real, h_real = w * self.image_width, h * self.image_height
-                x_min, y_min = cell_x * self.image_width / self.yolo.cell_width - w_real / 2, cell_y * self.image_height / self.yolo.cell_height - h_real / 2
-                object_rectangle = patches.Rectangle((x_min, y_min), w_real, h_real, linewidth = 1, color=self.colors[most_prob_index])
+                x_min, y_min = cell_x * self.image_width / self.cell_width - w_real / 2, cell_y * self.image_height / self.cell_height - h_real / 2
+                object_rectangle = patches.Rectangle((x_min, y_min), w_real, h_real, facecolor='none', linewidth = 1, edgecolor=self.colors[most_prob_index])
                 self.real_plots.append(self.ax.add_patch(object_rectangle))
                 # ax.annotation(string, (x,y) to annotate)
-                object_annotation = self.ax.annotate(self.class_name[most_prob_index], (x_min, cell_y * self.image_height /self.yolo.cell_height + h_real /2))
+                object_annotation = self.ax.annotate(self.class_name[most_prob_index], (x_min, y_min))
                 self.real_plots.append(object_annotation)
                 print(self.class_name[most_prob_index])
-                print(cell_x * self.image_width / self.yolo.cell_width, cell_y * self.image_height / self.yolo.cell_height)
+                print(cell_x * self.image_width / self.cell_width, cell_y * self.image_height / self.cell_height)
            
         return self.real_plots 
         
 
     def plot_pred(self):
         # self.yolo's attributes has batch size axis
-        x_center, y_center, w, h, iou, prob = self.sess.run([self.yolo.coord[0][:,:,0], self.yolo.coord[0][:,:,1], self.yolo.coord[0][:,:,2], self.yolo.coord[0]]:,:,3], self.yolo.iou[0], self.yolo.class_prob_pred[0]) 
+            # x_center, y_center with respect to grid
+            # w, h with respect to whole image(448*448)
+            # prob: conditional probability of object: [num_cell, object_prob]
+        x_center, y_center, w, h, iou, prob = self.sess.run([self.yolo.coord[0][:,:,0], self.yolo.coord[0][:,:,1], self.yolo.coord[0][:,:,2], self.yolo.coord[0][:,:,3], self.yolo.iou[0], self.yolo.class_prob_pred[0]]) 
         
 
-
-def detect(config, args):
+def detect(config, args, anchor_info, model_name):
     base_dir = os.path.expanduser(config.get('config', 'basedir'))
-    log_dir = os.path.join(base_dir, config.get('config', 'logdir'))
+    log_dir = os.path.join(os.path.join(base_dir, config.get('config', 'logdir')), model_name)
     cache_dir = os.path.join(base_dir, config.get('cache', 'cachedir'))
+
+    yolo_model = getattr(importlib.import_module(model_name+'.model'), 'yolo_model')
+    cell_height = config.getint(model_name, 'height') // config.getint(model_name, 'ratio')
+    cell_width = config.getint(model_name, 'width') // config.getint(model_name, 'ratio')
 
     class_txt = os.path.join(base_dir, config.get('cache', 'name'))
     with open(class_txt, 'r') as f:
@@ -105,20 +115,28 @@ def detect(config, args):
         sess.run(tf.global_variables_initializer())
 
         # labels = {object_appear, object_relative_xy, class_prob, regression_coord_label)
-        images, labels = utils.read_tfrecord(data_path, config, num_class)
+        images, labels, image_path = utils.read_tfrecord(data_path, config, num_class, cell_width, cell_height)
         images_normalized = tf.image.per_image_standardization(images)
 
-        sample_detect = tf.train.shuffle_batch((images,) + labels, batch_size=1, capacity=100, min_after_dequeue=50, num_threads=1)
+        sample_detect = tf.train.shuffle_batch((images,) + labels, batch_size=1, capacity=100, min_after_dequeue=50, num_threads=10)
 
         detect_image = tf.placeholder(tf.float32, [1] + images.get_shape().as_list(), name='detect_image')
         detect_label = [tf.placeholder(label.dtype, [1] + label.get_shape().as_list(), name='detect_label' + label.op.name) for label in labels]
-        #global_step = tf.train.get_or_create_global_step()
-        yolo = yolo_model(config, args, num_class)
+
+        global_step = tf.train.get_or_create_global_step()
+        
+        if model_name == 'yolo':
+            yolo = yolo_model(config, args, num_class)
+        elif model_name == 'yolo2':
+            yolo = yolo_model(config, args, anchor_info, num_class)
+        else:
+            raise ValueError('Not supported yolo')
+
         # Do inference
         yolo(detect_image, is_training=False)
 
         with tf.name_scope('objective'):
-            yolo.create_objective(*sample_detect[1:])
+            yolo.create_objectives(*sample_detect[1:])
     
         # Can partially restore variable with 'exclude'
         variables_to_restore = slim.get_variables_to_restore()
@@ -127,9 +145,8 @@ def detect(config, args):
         coord = tf.train.Coordinator()
         threads = tf.train.start_queue_runners(sess, coord)
 
-        # Get data by running session
         _image = sess.run(sample_detect[0])
-        plt.imsave('check.png',np.squeeze(_image, axis=0))
+        #plt.imsave('check5.jpg',sess.run(images)/255.0)
         _labels = sess.run(sample_detect[1:])
 
         # This way gets always same data
@@ -143,10 +160,10 @@ def detect(config, args):
         model_path = tf.train.latest_checkpoint(log_dir)
 
         # Restore
-        slim.assign_from_checkpoint_fn(model_path, variables_to_restore)(sess)
+        #slim.assign_from_checkpoint_fn(model_path, variables_to_restore)(sess)
 
         coord.request_stop()
         coord.join(threads)
         
         # Plot
-        _ = plot(class_names, sess, yolo, feed_dict, _image, _labels)
+        _ = plot(class_names, sess, yolo, feed_dict, _image, _labels, cell_width, cell_height)

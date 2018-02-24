@@ -34,14 +34,11 @@ def _get_vars_and_update_ops(scope):
 
     return scope_var_list, update_ops
 
-def train(config, args):
+def train(config, args, anchor_info, model_name):
     base_dir = os.path.expanduser(config.get('config', 'basedir'))
-    log_dir = os.path.join(base_dir, config.get('config', 'logdir'))
-    model_name = config.get('config', 'model')
+    log_dir = os.path.join(os.path.join(base_dir, config.get('config', 'logdir')), model_name)
     cache_dir = os.path.join(base_dir, config.get('cache', 'cachedir'))
-    anchor_dir = os.path.join(base_dir, config.get('cache', 'anchor'))
 
-    anchor_info = pd.read_csv(anchor_dir).values
 
     class_txt = os.path.join(base_dir, config.get('cache', 'name'))
     with open(class_txt, 'r') as f:
@@ -51,6 +48,8 @@ def train(config, args):
     tf.logging.info('%d classes' % num_class)
 
     os.makedirs(log_dir, exist_ok=True)
+    if args.delete:
+        shutil.rmtree(log_dir)
 
     cell_width = config.getint(model_name, 'width') // config.getint(model_name, 'ratio')
     cell_height = config.getint(model_name, 'height') // config.getint(model_name, 'ratio')
@@ -66,8 +65,6 @@ def train(config, args):
     else:
         raise ValueError('Not supproted yolo model')
 
-    if args.delete:
-        shutil.rmtree(log_dir)
 
     # train.tfrecord, val.tfrecord
     data_path = [os.path.join(cache_dir, types) + '.tfrecord' for types in args.data_type]
