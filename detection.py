@@ -17,8 +17,7 @@ class plot():
         self.yolo = inference_model
         self.cell_width = cell_width
         self.cell_height = cell_height
-#        self.image = image
-#        self.label = label
+        self.image = image
         # image, label include batch size axis
         self.image = np.squeeze(image, axis=0)
         self.label = label
@@ -62,8 +61,8 @@ class plot():
                 cell_height_index = cell_index // self.cell_width
                 cell_width_index = cell_index % self.cell_height
                 # Bottom and left coordinate
-                cell_rectangle = patches.Rectangle((cell_width_index * self.image_width / self.cell_width, cell_height_index * self.image_height / self.cell_height), self.image_width / self.cell_width, self.image_height / self.cell_height, linestyle='dashed', edgecolor=self.colors[most_prob_index])
-                self.real_plots.append(self.ax.add_patch(cell_rectangle))
+                #cell_rectangle = patches.Rectangle((cell_width_index * self.image_width / self.cell_width, cell_height_index * self.image_height / self.cell_height), self.image_width / self.cell_width, self.image_height / self.cell_height, linestyle='dashed', edgecolor=self.colors[most_prob_index])
+                #self.real_plots.append(self.ax.add_patch(cell_rectangle))
     
                 # All between [0,1]
                 offset_x, offset_y, w_sqrt, h_sqrt = _regression_coord_label[0]
@@ -73,7 +72,7 @@ class plot():
                 w, h = w_sqrt*w_sqrt, h_sqrt*h_sqrt             
                 w_real, h_real = w * self.image_width, h * self.image_height
                 x_min, y_min = cell_x * self.image_width / self.cell_width - w_real / 2, cell_y * self.image_height / self.cell_height - h_real / 2
-                object_rectangle = patches.Rectangle((x_min, y_min), w_real, h_real, facecolor='none', linewidth = 1, edgecolor=self.colors[most_prob_index])
+                object_rectangle = patches.Rectangle((x_min, y_min), w_real, h_real, facecolor='none', linewidth = 3, edgecolor=self.colors[most_prob_index])
                 self.real_plots.append(self.ax.add_patch(object_rectangle))
                 # ax.annotation(string, (x,y) to annotate)
                 object_annotation = self.ax.annotate(self.class_name[most_prob_index], (x_min, y_min))
@@ -145,9 +144,11 @@ def detect(config, args, anchor_info, model_name):
         coord = tf.train.Coordinator()
         threads = tf.train.start_queue_runners(sess, coord)
 
-        _image = sess.run(sample_detect[0])
-        #plt.imsave('check5.jpg',sess.run(images)/255.0)
-        _labels = sess.run(sample_detect[1:])
+
+        # Do not call session run twice -> different label result to mixing labels
+        _image, _labels = sess.run([sample_detect[0], sample_detect[1:]])
+        plt.imsave('check5.jpg',sess.run(images)/255.0)
+        #_labels = sess.run(sample_detect[1:])
 
         # This way gets always same data
         #_image, _labels, _image_normalized = sess.run([images, labels, images_normalized])
