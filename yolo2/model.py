@@ -45,7 +45,7 @@ class yolo_model():
             logistic_activation = tf.nn.sigmoid(result_reshaped[:,:,:,:3])
             # t_x,t_y
             self.center_xy = logistic_activation[:,:,:,:2]
-            # t_o
+            # t_o, iou
             self.t_o = logistic_activation[:,:,:,2]
             # class probaility, [batch size, num cell, bounding box, class_prob(20)]
             self.class_prob = result_reshaped[:,:,:,5:]
@@ -60,6 +60,22 @@ class yolo_model():
             # Make width and height relative to the whole output feature, to do regression
             self.relative_wh_sqrt = tf.sqrt(self.wh / np.array([ofm_x, ofm_y]), name='wh_sqrt')
             self.coord = tf.concat([self.center_xy, self.relative_wh_sqrt], axis=-1, name='coordination')           
+
+        if not is_training:
+            with tf.name_scope('detection'):
+                cell_index = np.zeros((ofm_x, ofm_y, 2))
+                # 0:(0,0), 1:(1,0), 2:(2,0) ...
+                for y in range(ofm_y):
+                    for x in range(ofm_x):
+                        cell_index[y,x,:] = [x,y]
+                cell_index = np.reshape(cell_index, [1, num_cells, 1, 2])
+                # Getting center coordinate in image
+                cell_center_xy = self.center_xy + image_index
+                # [batch size, num cells, bounding box, 2(x,y)]
+                self.cell_center_xy_min = cell_center_xy + self.area_xy_min
+                self.cell_center_xy_max = cell_center_xy + self.area_xy_max
+                # Multiply the conditional class probabilities and the individual box confidence prediction to get scores
+                self.scores = self.class_prob * tf.expand_dims(self.t_o, axis=-1)
             
 
     # Same regression problem as yolo
