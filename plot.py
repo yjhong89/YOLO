@@ -86,3 +86,5 @@ class plot():
         # self.yolo's attributes has batch size axis
             # Per each bounidng box, represents coordinate and confidence score
         image_xy_min, image_xy_max, score = self.sess.run([self.yolo.cell_center_xy_min[0], self.yolo.cell_center_xy_max[0], self.yolo.scores[0]], feed_dict=self.feed_dict) 
+
+    def non_max_suppression(self):
