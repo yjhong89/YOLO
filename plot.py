@@ -127,9 +127,9 @@ class plot():
                 if box_info[i][2][class_index] < self.prob_th:
                     continue
                 
-                # Non_max_suppression
+                # Non_max_suppression, kill other candidates
                 for j in box_info[i+1:]:
-                    if iou(box_info[i][0], box_info[i][1], j[0], j[1]) > self.iou_th:
+                    if self.iou(box_info[i][0], box_info[i][1], j[0], j[1]) > self.iou_th:
                         j[2][class_index] = 0
 
         return box_info
