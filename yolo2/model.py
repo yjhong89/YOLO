@@ -54,7 +54,7 @@ class yolo_model():
             self.wh = tf.exp(result_reshaped[:,:,:,3:5]) * np.reshape(self.anchors, [1,1,len(self.anchors), -1])
 
             # Figure3, predict the width and height of the box as offsets from cluster centroids
-            self.area = tf.reduce_prod(self.wh, axis=[-1], name='predicted_area')
+            self.area = tf.reduce_prod(self.wh, axis=-1, name='predicted_area')
             self.area_xy_min = self.center_xy - self.wh / 2
             self.area_xy_max = self.center_xy + self.wh / 2
             # Make width and height relative to the whole output feature, to do regression
@@ -70,11 +70,13 @@ class yolo_model():
                         cell_index[y,x,:] = [x,y]
                 cell_index = np.reshape(cell_index, [1, num_cells, 1, 2])
                 # Getting center coordinate in image
-                cell_center_xy = self.center_xy + image_index
+                cell_center_xy = self.center_xy + cell_index
                 # [batch size, num cells, bounding box, 2(x,y)]
                 self.cell_center_xy_min = cell_center_xy + self.area_xy_min
                 self.cell_center_xy_max = cell_center_xy + self.area_xy_max
                 # Multiply the conditional class probabilities and the individual box confidence prediction to get scores
+                # We define confidence as pr(object)*iou
+                    # [batch size, num cells, bounding box, num class(20)]
                 self.scores = self.class_prob * tf.expand_dims(self.t_o, axis=-1)
             
 

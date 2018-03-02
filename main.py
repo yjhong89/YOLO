@@ -17,7 +17,7 @@ def main():
     parser.add_argument('-c', '--config', default=['config.ini'])
     parser.add_argument('-t', '--data_type', nargs='+', default=['train','val'])
     parser.add_argument('-d', '--delete', action='store_true')
-    parser.add_argument('--train', type=str2bool, default='f')
+    parser.add_argument('--train', type=str2bool, default='t')
     parser.add_argument('--steps', type=int, default=50000)
     parser.add_argument('--batch_size', type=int, default=32)
     parser.add_argument('--gradient_norm', type=float, default=5.0)
@@ -26,6 +26,8 @@ def main():
     parser.add_argument('--summary_secs', type=int, default=100)
     parser.add_argument('--logging_level', default='INFO')
     parser.add_argument('--task', type=int, default=0)
+    parser.add_argument('--probability_threshold', type=float, default=0.3)
+    parser.add_argument('--iou_threshold', type=float, default=0.4)
 
     args = parser.parse_args()
     if args.logging_level:

@@ -14,8 +14,9 @@ def detect(config, args, anchor_info, model_name):
     cache_dir = os.path.join(base_dir, config.get('cache', 'cachedir'))
 
     yolo_model = getattr(importlib.import_module(model_name+'.model'), 'yolo_model')
-    cell_height = config.getint(model_name, 'height') // config.getint(model_name, 'ratio')
-    cell_width = config.getint(model_name, 'width') // config.getint(model_name, 'ratio')
+    ratio = config.getint(model_name, 'ratio')
+    cell_height = config.getint(model_name, 'height') // ratio
+    cell_width = config.getint(model_name, 'width') // ratio
 
     class_txt = os.path.join(base_dir, config.get('cache', 'name'))
     with open(class_txt, 'r') as f:
@@ -84,4 +85,4 @@ def detect(config, args, anchor_info, model_name):
         coord.join(threads)
         
         # Plot
-        _ = plot(class_names, sess, yolo, feed_dict, _image, _labels, cell_width, cell_height)
+        _ = plot(class_names, sess, yolo, feed_dict, _image, _labels, cell_width, cell_height, ratio, args.probability_threshold, args.iou_threshold)
