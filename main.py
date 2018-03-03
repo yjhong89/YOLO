@@ -18,7 +18,7 @@ def main():
     parser.add_argument('-t', '--data_type', nargs='+', default=['train','val'])
     parser.add_argument('-d', '--delete', action='store_true')
     parser.add_argument('--train', type=str2bool, default='t')
-    parser.add_argument('--steps', type=int, default=50000)
+    parser.add_argument('--steps', type=int, default=200000)
     parser.add_argument('--batch_size', type=int, default=32)
     parser.add_argument('--gradient_norm', type=float, default=5.0)
     parser.add_argument('--optimizer_name', type=str, default='adam')
