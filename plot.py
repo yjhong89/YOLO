@@ -38,10 +38,11 @@ class plot():
         self.colors = [color['color'] for cl_name, color in zip(class_name, itertools.cycle(plt.rcParams['axes.prop_cycle']))]
         self.image_height, self.image_width, _ = self.image.shape
         self.draw()
-        self.plot_real()
+        #self.plot_real()
+        self.plot_pred()
         self.fig.savefig('./test.pdf', dpi=120) 
-        for i in self.real_plots:
-            i.remove()
+        #for i in self.real_plots:
+            #i.remove()
 
 
     def draw(self):
@@ -50,9 +51,9 @@ class plot():
         self.ax.set_yticks(np.arange(0, self.image_height, self.image_height / self.cell_height))
         # grid: 'which': major and minor tick grids
         self.ax.grid(which='both', axis='both')
+        self.ax.imshow(self.image / 255.0)
 
     def plot_real(self):
-        self.ax.imshow(self.image / 255.0)
         # self.labels: real labels, (object_appear, object_relative_xy, class_prob, regression_coord_label)
             # [batch_size, num_cells, 1], [batch_size, num_cells, 1, 4], [batch_size, num_cells, num_class] [batch_size, num_cells, 1, 4]
         # Select object appear cell
@@ -82,8 +83,6 @@ class plot():
                 print(self.class_name[most_prob_index])
                 print(cell_x * self.image_width / self.cell_width, cell_y * self.image_height / self.cell_height)
            
-        return self.real_plots 
-        
 
     def plot_pred(self):
         # self.yolo's attributes has batch size axis
@@ -91,18 +90,18 @@ class plot():
             # [num cells, bounding box, (x,y)]
             # self.yolo.score: pr(class) * iou, [num cells, bounding box, num classs]
         image_xy_min, image_xy_max, score = self.sess.run([self.yolo.cell_center_xy_min[0], self.yolo.cell_center_xy_max[0], self.yolo.scores[0]], feed_dict=self.feed_dict) 
-        boxes = self.non_max_suppression(image_xy_min, image_xy_max, score, self.prob_th, self.iou_th)
+        boxes = self.non_max_suppression(image_xy_min, image_xy_max, score)
         object_count = 0
 
         # xy_min, xy_max scaled to cell index
         for _xy_min, _xy_max, _score in boxes:
             largest_index = np.argmax(_score)
-            if _score[largest_index] > probability_threshold:
+            if _score[largest_index] > self.prob_th:
                 width_height = _xy_max - _xy_min
                 xy_min_scaled = _xy_min * self.ratio
                 width_height_scaled = width_height * self.ratio
 
-                object_rectangle = pathes.Rectangle(xy_min_scaled, width_height_scaled[0], width_height_scaled[1], facecolor='none', linewidth=3, edgecolor=self.colors[largest_index])
+                object_rectangle = patches.Rectangle(xy_min_scaled, width_height_scaled[0], width_height_scaled[1], facecolor='none', linewidth=3, edgecolor=self.colors[largest_index])
                 self.ax.add_patch(object_rectangle)
                 self.ax.annotate(self.class_name[largest_index] + '%.3f%%' % (_score[largest_index]*100), xy_min_scaled) 
                 object_count += 1
@@ -135,7 +134,7 @@ class plot():
         return box_info
 
 
-    def iou(box1_xy_min, box1_xy_max, box2_xy_min, box2_xy_max):
+    def iou(self, box1_xy_min, box1_xy_max, box2_xy_min, box2_xy_max):
         box1_area = np.multiply.reduce(box1_xy_max - box1_xy_min, -1)
         box2_area = np.multiply.reduce(box2_xy_max - box2_xy_max, -1)
 

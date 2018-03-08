@@ -65,7 +65,7 @@ def detect(config, args, anchor_info, model_name):
 
         # Do not call session run twice -> different label result to mixing labels
         _image, _labels = sess.run([sample_detect[0], sample_detect[1:]])
-        plt.imsave('check5.jpg',sess.run(images)/255.0)
+        #plt.imsave('check5.jpg',sess.run(images)/255.0)
         #_labels = sess.run(sample_detect[1:])
 
         # This way gets always same data
@@ -79,7 +79,7 @@ def detect(config, args, anchor_info, model_name):
         model_path = tf.train.latest_checkpoint(log_dir)
 
         # Restore
-        #slim.assign_from_checkpoint_fn(model_path, variables_to_restore)(sess)
+        slim.assign_from_checkpoint_fn(model_path, variables_to_restore)(sess)
 
         coord.request_stop()
         coord.join(threads)
